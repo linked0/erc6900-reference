@@ -161,6 +161,55 @@ contract ModularSessionKeyPluginTest is Test {
         vm.stopPrank();
     }
 
+    function test_sessionKey_batch_and_wrong_duration() public {
+        address tempOwner2 = makeAddr("tempOwner2");
+        address tempOwner3 = makeAddr("tempOwner3");
+
+        address[] memory tempOwners = new address[](2);
+        tempOwners[0] = tempOwner2;
+        tempOwners[1] = tempOwner3;
+
+        bytes4[] memory allowedSelectors = new bytes4[](2);
+        allowedSelectors[0] = TRANSFERFROM_SESSIONKEY_SELECTOR;
+        allowedSelectors[1] = TRANSFERFROM_SESSIONKEY_SELECTOR;
+
+        uint48[] memory afters = new uint48[](2);
+        afters[0] = 0;
+        afters[1] = 0;
+
+        uint48[] memory untils = new uint48[](2);
+        untils[0] = 2;
+        untils[1] = 2;
+
+        vm.expectEmit(true, true, true, true);
+        emit SessionKeysAdded(address(account), tempOwners, allowedSelectors, afters, untils);
+        vm.prank(address(account));
+        modularSessionKeyPlugin.addSessionKeyBatch(tempOwners, allowedSelectors, afters, untils);
+
+        // Move block height to 12345
+        vm.warp(12345);
+
+        bytes memory revertReason =
+            abi.encodeWithSelector(IModularSessionKeyPlugin.WrongTimeRangeForSession.selector);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                UpgradeableModularAccount.RuntimeValidationFunctionReverted.selector,
+                address(modularSessionKeyPlugin),
+                IModularSessionKeyPlugin.FunctionId.RUNTIME_VALIDATION_TEMPORARY_OWNER,
+                revertReason
+            )
+        );
+
+        vm.prank(tempOwner3);
+        TokenSessionKeyPlugin(address(account)).transferFromSessionKey(
+            address(mockERC20), address(account), target, 1 ether
+        );
+
+        assertEq(mockERC20.balanceOf(address(account)), 1 ether);
+        assertEq(mockERC20.balanceOf(target), 0);
+    }
+
     function test_sessionKey_batch() public {
         address tempOwner2 = makeAddr("tempOwner2");
         address tempOwner3 = makeAddr("tempOwner3");
